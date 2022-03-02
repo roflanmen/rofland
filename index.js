@@ -20,8 +20,11 @@ var foodCount = 1600;
 
 app.use(express.static(__dirname));
 
-app.get("/", (req, res) => {
-    res.sendFile(`${__dirname}/views/pages/index.html`);
+app.get("/3d/a", (req, res) => {
+    res.sendFile(`${__dirname}/3d/index_rofl.html`);
+});
+app.get("/3d/b", (req, res) => {
+    res.sendFile(`${__dirname}/3d/kimnata.html`);
 });
 
 io.on("connection", function (socket) {
