@@ -1,0 +1,292 @@
+<!doctype html>
+<html>
+
+<head>
+    <title>Bullshit</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            overflow: hidden;
+            font: 13px Helvetica, Arial;
+        }
+
+        form {
+            background: #000;
+            padding: 3px;
+            position: fixed;
+            bottom: 0;
+            width: 100%;
+        }
+
+        form input {
+            border: 0;
+            padding: 10px;
+            width: 90%;
+            margin-right: .5%;
+        }
+
+        form button {
+            width: 9%;
+            background: rgb(130, 224, 255);
+            border: none;
+            padding: 10px;
+        }
+
+        #messages {
+            list-style-type: none;
+            margin: 0;
+            padding: 0;
+        }
+
+        #messages li {
+            padding: 5px 10px;
+        }
+
+        #messages li:nth-child(odd) {
+            background: #eee;
+        }
+
+    </style>
+
+</head>
+
+<body>
+    <canvas id="game"></canvas>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/2.2.0/socket.io.slim.js"></script>
+    <script src="https://code.jquery.com/jquery-3.3.1.min.js"></script>
+    <script>
+        $(document).ready(function() {
+            var socket = io();
+
+            var data = {
+                foodEaten: [],
+                playersEaten: []
+            };
+            var info = {
+                players: {}
+            };
+            var shifted;
+            $(document).on('keyup keydown', function(e){shifted = e.shiftKey} );
+            var fps = 60;
+            var ww;
+            var wh;
+            var prevPack;
+            var mx = window.innerWidth / 2,
+                my = window.innerHeight / 2;
+            var dist = 0;
+            var f = 0;
+            var x = 0;
+            var y = 0;
+            var canvas = document.getElementById("game");
+            var ctx = canvas.getContext('2d');
+            var color = 'gray';
+            var cellColor = getRandomColor();
+            data['color'] = cellColor;
+            var verL, horL;
+            var alive = false;
+            var cellSize = 50;
+            var mass = 0;
+            var angle = 0;
+            var foodEaten;
+            var updTime = Date.now();
+            var updDur;
+            var framesDurUpd;
+            function update(data) {
+                data.foodEaten = info.food.filter(function(piece) {
+                    return Math.sqrt((x - piece['x']) ** 2 + (y - piece['y']) ** 2) <= Math.sqrt(mass) * 6;
+                });
+                data['mass'] += data.foodEaten.length;
+                mass += data.foodEaten.length;
+
+                var playersMassEaten = 0;
+                Object.keys(info.players).forEach(function(key) {
+                    if (key != data.id) {
+                        if (Math.sqrt((x - info.players[key]['x']) ** 2 + (y - info.players[key]['y']) ** 2) <= Math.sqrt(mass) * 6 && mass > info.players[key].mass) {
+                            playersMassEaten += info.players[key].mass;
+                            data.playersEaten.push(key)
+                        }
+                    }
+
+                });
+                data['mass'] += data.foodEaten.length;
+                mass += data.foodEaten.length;
+
+                data['mass'] += playersMassEaten / 2;
+                mass += playersMassEaten / 2;
+                socket.emit('update', data);
+                data.foodEaten = [];
+                data.playersEaten = [];
+            }
+
+            socket.on('id', function(msg) {
+
+                data['id'] = msg;
+                setInterval(update, 1000 / 20, data);
+                setInterval(checkIfAlive, 1000 / 10);
+            });
+
+            socket.on('update', function(msg) {
+                console.log(msg);
+                updDur = Date.now() - updTime;
+                updTime = Date.now();
+                prevPack = JSON.parse(JSON.stringify(info));
+                Object.keys(prevPack.players).forEach(function(key) {
+                    if (key != data['id']) {
+                        prevPack.players[key]['xoff'] = 0;
+                        prevPack.players[key]['yoff'] = 0;
+                    }
+                });
+                framesDurUpd = updDur / (1000 / fps);
+                info = msg;
+            });
+
+            socket.on('msg', function(msg) {
+
+            });
+
+            canvas.onmousemove = function(event) {
+                mx = event.clientX;
+                my = event.clientY;
+            }
+
+            function start() {
+                x = Number((Math.random() * ww).toFixed(0));
+                y = Number((Math.random() * wh).toFixed(0));
+                mass = 50;
+                alive = true;
+
+            }
+
+            function getRandomColor() {
+                var letters = '0123456789ABCDEF';
+                var color = '#';
+                for (var i = 0; i < 6; i++) {
+                    color += letters[Math.floor(Math.random() * 16)];
+                }
+                return color;
+            }
+
+            function render() {
+                ctx.clearRect(0, 0, ww, wh);
+                ctx.beginPath();
+                for (var i = 0; i < verL; i++) {
+                    ctx.moveTo((i + 1) * cellSize, 0)
+                    ctx.lineTo((i + 1) * cellSize, wh)
+                }
+                for (var i = 0; i < horL; i++) {
+                    ctx.moveTo(0, (i + 1) * cellSize)
+                    ctx.lineTo(ww, (i + 1) * cellSize)
+                }
+                ctx.strokeStyle = color;
+                ctx.stroke();
+
+                for (var i = 0; i < info.food.length; i++) {
+                    var temp = info.food[i];
+                    if (temp['x'] < ww && temp['y'] < wh) {
+                        ctx.fillStyle = temp['color'];
+                        ctx.beginPath();
+                        ctx.arc(temp['x'], temp['y'], 6, 0, 2 * Math.PI);
+                        ctx.fill();
+                    }
+                }
+
+                if (Object.keys(info.players)) {
+                    Object.keys(info.players).forEach(function(key) {
+                        if (key != data['id']) {
+                            ctx.fillStyle = info.players[key]['color'];
+                            ctx.beginPath();
+                            ctx.arc(prevPack.players[key]['x'] + prevPack.players[key]['xoff'], prevPack.players[key]['y'] + prevPack.players[key]['yoff'], Math.sqrt(info.players[key]['mass']) * 6, 0, 2 * Math.PI);
+                            ctx.fill();
+                        }
+                    });
+                }
+
+                ctx.fillStyle = cellColor;
+                ctx.beginPath();
+                ctx.arc(x, y, Math.sqrt(mass) * 6, 0, 2 * Math.PI);
+                ctx.fill();
+            }
+
+            function mouse() {
+                var vx = mx - x;
+                var vy = my - y;
+                var ax = 0;
+                var bx = 0;
+                var cx = 0;
+                if (mx < x) {
+                    ax = 180;
+                } else if (my >= y) {
+                    bx = 180;
+                }
+                if (mx >= x && my >= y) {
+                    cx = 180;
+                }
+                angle = Math.atan(vy / vx) * 180 / Math.PI + ax + bx + cx;
+                dist = Math.sqrt((mx - x) ** 2 + (my - y) ** 2);
+            }
+
+            function updatePos() {
+                if(shifted){
+                    x = mx;
+                    y = my;
+                    data['x'] = x;
+                    data['y'] = y;
+                    data['mass'] = mass;
+                }
+                else if (alive) {
+                    x += Math.cos(angle / 180 * Math.PI) / Math.sqrt(mass) * Math.sqrt(dist) * 2;
+                    y += Math.sin(angle / 180 * Math.PI) / Math.sqrt(mass) * Math.sqrt(dist) * 2;
+
+                    data['x'] = x;
+                    data['y'] = y;
+                    data['mass'] = mass;
+                }
+                data['alive'] = alive;
+
+                if (Object.keys(prevPack.players)) {
+                    Object.keys(prevPack.players).forEach(function(key) {
+                        if (key != data['id']) {
+                            prevPack.players[key]['xoff'] += (info.players[key]['x'] - prevPack.players[key]['x']) / framesDurUpd;
+                            prevPack.players[key]['yoff'] += (info.players[key]['y'] - prevPack.players[key]['y']) / framesDurUpd;
+                        }
+                    });
+                }
+
+            }
+
+            function checkIfAlive() {
+                if (!info.players[data.id].alive) {
+                    socket.emit('delete', data.id);
+                    window.location.reload();
+                }
+            }
+
+            function resize() {
+                ww = window.innerWidth;
+                wh = window.innerHeight;
+                $('#game').attr('width', ww);
+                $('#game').attr('height', wh);
+                $('#game').css('width', ww);
+                $('#game').css('height', wh);
+                verL = ww / cellSize;
+                horL = wh / cellSize;
+            }
+            resize();
+            $(window).resize(function() {
+                resize();
+            });
+            setInterval(mouse, 1000 / fps);
+            setInterval(render, 1000 / fps);
+            setInterval(updatePos, 1000 / fps);
+            start()
+        });
+
+    </script>
+</body>
+
+</html>

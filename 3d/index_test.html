@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>three.js - pointerlock controls</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<style>
+			html, body {
+				margin: 0;
+				height: 100%;
+				overflow: hidden
+			}
+
+			#blocker {
+				position: absolute;
+				width: 100%;
+				height: 100%;
+				background-color: rgba(0,0,0,0.5);
+			}
+
+			#instructions {
+				width: 100%;
+				height: 100%;
+
+				display: -webkit-box;
+				display: -moz-box;
+				display: box;
+
+				-webkit-box-orient: horizontal;
+				-moz-box-orient: horizontal;
+				box-orient: horizontal;
+
+				-webkit-box-pack: center;
+				-moz-box-pack: center;
+				box-pack: center;
+
+				-webkit-box-align: center;
+				-moz-box-align: center;
+				box-align: center;
+
+				color: #ffffff;
+				text-align: center;
+				font-family: Arial;
+				font-size: 14px;
+				line-height: 24px;
+
+				cursor: pointer;
+			}
+		</style>
+		
+	</head>
+	<body>
+		<!-- <div id="blocker">
+
+			<div id="instructions">
+				<span style="font-size:36px">Click</span>
+			</div>
+
+		</div> -->
+		<script>
+			document.addEventListener( 'DOMContentLoaded', function(){document.querySelector("[alt='www.000webhost.com'").parentElement.parentElement.remove()}, false );
+		</script>
+
+		<script type="module">
+
+			import * as THREE from './js/three.js-master/build/three.module.js';
+
+			import { OrbitControls } from './js/three.js-master/examples/jsm/controls/OrbitControls.js';
+			// import { PointerLockControls } from './js/three.js-master/examples/jsm/controls/PointerLockControls.js';
+			import { EffectComposer } from './js/three.js-master/examples/jsm/postprocessing/EffectComposer.js';
+			import { RenderPass } from './js/three.js-master/examples/jsm/postprocessing/RenderPass.js';
+			import { UnrealBloomPass } from './js/three.js-master/examples/jsm/postprocessing/UnrealBloomPass.js';
+
+			import Stats from './js/three.js-master/examples/jsm/libs/stats.module.js';
+			import { GUI } from './js/three.js-master/examples/jsm/libs/dat.gui.module.js';
+
+
+
+
+			let camera, scene, renderer, controls, composer;
+			let geometry, edges, line, material, sphere, light, temp, currentChunk, offset;
+
+			let maxSize = 101;
+
+			let food = new Array();
+
+			temp = Array(maxSize);
+			for(let i = 0;i<maxSize;i++){
+				food.push(temp);
+			}
+
+			temp = food;
+
+			for(let i = 0;i<maxSize;i++){
+				food.push(temp);
+			}
+			
+
+			let bg, stats;
+			const loader = new THREE.TextureLoader();
+			
+			let frustum = new THREE.Frustum();
+
+			let sky = 'photos/sky/11.png';
+
+			let moveForward = false;
+			let moveBackward = false;
+
+			let gridSize = 3; // cube side length
+			let cellSize = 1000;
+			let bound = gridSize * cellSize;
+			let foodPerCell = 14;
+			let foodAmount = (gridSize ** 3) * foodPerCell;
+
+			let baseSpeed = 0.85;
+			let speed = baseSpeed;
+			let mass = 1;
+
+			let acc = 5;
+			let maxSpeed = 16;
+
+			let velocityMult = 0.8;
+			let gameSpeed = 60;
+			let isAccelerating = false;
+			let prevTime = performance.now();
+			let velocity = 0;
+
+			let baseFov = 75;
+			let addFov = 67; // 104 - time warp
+			let far = 3000;
+
+			const direction = new THREE.Vector3();
+			const matrix = new THREE.Matrix4();
+
+			const params = {
+				exposure: 1,
+				bloomStrength: 0.7,
+				bloomRadius: 0,
+				bloomThreshold: 0,
+				far: far,
+				addFov: addFov,
+				acc: acc,
+				maxSpeed: maxSpeed
+			};
+
+			init();
+			animate();
+
+
+			function init() {
+				renderer = new THREE.WebGLRenderer( { antialias: true } );
+				camera = new THREE.PerspectiveCamera( baseFov, window.innerWidth / window.innerHeight, 1, far );
+
+
+				stage() 
+
+			    objects()
+
+				control()
+
+				binds()
+
+				render()
+
+				stats = new Stats();
+				document.body.appendChild( stats.dom );
+
+			}
+
+			function getRandomColor() {
+			  let letters = '0123456789ABCDEF';
+			  let color = '#';
+			  for (let i = 0; i < 6; i++) {
+			    color += letters[Math.floor(Math.random() * 16)];
+			  }
+			  return color;
+			}
+
+			function arraysEqual(a, b) {
+			  if (a === b) return true;
+			  if (a == null || b == null) return false;
+			  if (a.length !== b.length) return false;
+
+			  // If you don't care about the order of the elements inside
+			  // the array, you should sort both arrays here.
+			  // Please note that calling sort on an array will modify that array.
+			  // you might want to clone your array first.
+
+			  for (var i = 0; i < a.length; ++i) {
+			    if (a[i] !== b[i]) return false;
+			  }
+			  return true;
+			}
+
+			function onWindowResize() {
+
+				camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
+
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				composer.setSize( window.innerWidth, window.innerHeight );
+
+			}
+
+			function stage() {
+				scene = new THREE.Scene();
+				bg = loader.load(
+				    sky,
+				    () => {
+				      const rt = new THREE.WebGLCubeRenderTarget(bg.image.height);
+				      rt.fromEquirectangularTexture(renderer, bg);
+				      scene.background = rt;
+			    });
+			    
+			}
+
+			function objects() {
+				// bound
+				// let geometry = new THREE.BoxBufferGeometry( bound, bound, bound );
+				// edges = new THREE.EdgesGeometry( geometry );
+				// line = new THREE.LineSegments( edges, new THREE.LineBasicMaterial( { color: 0xffffff } ) );
+				// scene.add( line );
+				// bound
+
+				// food
+				
+
+				
+
+				// food
+
+				// player
+				geometry = new THREE.SphereGeometry( 16, 32, 32 );
+				let material = new THREE.MeshPhongMaterial({color: getRandomColor()});
+				material.transparent = true;
+				material.opacity = 0.25;
+				sphere = new THREE.Mesh( geometry, material );
+				scene.add( sphere );
+				// player
+			    
+				light = new THREE.HemisphereLight( 0xeeeeff, 0x777788, 0.75 );
+				light.position.set( 0.5, 1, 0.75 );
+				scene.add( light );
+
+			}
+
+			function updateFood(){
+				temp = [Math.floor(sphere.position.x / cellSize),Math.floor(sphere.position.y / cellSize),Math.floor(sphere.position.z / cellSize)]
+				if(arraysEqual(currentChunk, temp)){
+					return;
+				} else {
+					currentChunk = temp;
+					offset = [currentChunk[0]+(maxSize-1)/2, currentChunk[1]+(maxSize-1)/2, currentChunk[2]+(maxSize-1)/2];
+					if(offset.some((el)=>{return el < 0})){
+						return
+					} else {
+
+					}
+
+				}
+			}
+
+			function control() {
+				controls = new OrbitControls( camera, renderer.domElement );
+				controls.target = sphere.position
+
+				controls.enablePan = false
+				controls.enableDamping = true;
+				controls.dampingFactor = 0.05;
+				controls.rotateSpeed = 0.5;
+				controls.screenSpacePanning = false;
+
+				controls.minDistance = 80;
+				controls.maxDistance = 80;
+
+				controls.keys = {}
+
+				controls.mouseButtons = {
+					LEFT: THREE.MOUSE.ROTATE
+				}
+
+				// renderer.domElement.addEventListener( 'click', function () {
+
+				// 	document.body.requestFullscreen();
+				// }, false );
+
+				// const blocker = document.getElementById( 'blocker' );
+				// const instructions = document.getElementById( 'instructions' );
+
+				// instructions.style.display = 'none'; 
+				// blocker.style.display = 'none'; 
+
+				// instructions.addEventListener( 'click', function () {
+
+				// 	renderer.domElement.requestPointerLock();
+				// 	renderer.domElement.requestFullscreen();
+				// }, false );
+
+				// controls.addEventListener( 'lock', function () {
+
+				// 	instructions.style.display = 'none';
+				// 	blocker.style.display = 'none';
+
+				// } );
+
+				// controls.addEventListener( 'unlock', function () {
+
+				// 	blocker.style.display = 'block';
+				// 	instructions.style.display = '';
+
+				// } );
+
+				// scene.add( controls.getObject() );
+
+			}
+
+			function binds() {
+				const onKeyDown = function ( event ) {
+
+					switch ( event.keyCode ) {
+
+						case 38: // up
+						case 87: // w
+							moveForward = true;
+							speed = Math.max(speed, velocity)
+							break;
+
+						case 40: // down
+						case 83: // s
+							moveBackward = true;
+							break;
+
+					}
+					isAccelerating = true
+				};
+
+				const onKeyUp = function ( event ) {
+
+					switch ( event.keyCode ) {
+
+						case 38: // up
+						case 87: // w
+							moveForward = false;
+							velocity = speed
+							speed = baseSpeed
+							break;
+
+						case 40: // down
+						case 83: // s
+							moveBackward = false;
+							velocity = -speed
+							break;
+
+					}
+					isAccelerating = (Number(moveForward) - Number(moveBackward)) ? true : false
+				};
+
+				document.addEventListener( 'keydown', onKeyDown, false );
+				document.addEventListener( 'keyup', onKeyUp, false );
+
+				const touch = function (event){
+					console.log(event)
+					if(event.type == 'touchstart'){
+						moveForward = true;
+						speed = Math.max(speed, velocity)
+					} else {
+						moveForward = false;
+						velocity = speed
+						speed = baseSpeed
+					}
+				}
+
+				renderer.domElement.addEventListener( 'touchstart', touch );
+				renderer.domElement.addEventListener( 'touchend', touch );
+			}
+
+			function render() {
+				
+				renderer.setPixelRatio( window.devicePixelRatio );
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				document.body.appendChild( renderer.domElement );
+
+				const renderScene = new RenderPass( scene, camera );
+
+				const bloomPass = new UnrealBloomPass( new THREE.Vector2( window.innerWidth, window.innerHeight ), params.bloomStrength, params.bloomRadius, params.bloomThreshold );
+
+				composer = new EffectComposer( renderer );
+				composer.addPass( renderScene );
+				composer.addPass( bloomPass );
+
+				const gui = new GUI();
+
+				gui.add( params, 'bloomStrength', 0.0, 3.0 ).onChange( function ( value ) {
+					bloomPass.strength = Number( value );
+				} );
+
+				gui.add( params, 'bloomRadius', 0.0, 1.0 ).step( 0.01 ).onChange( function ( value ) {
+					bloomPass.radius = Number( value );
+				} );
+				
+				gui.add( params, 'far', 1000, 20000 ).step( 100 ).onChange( function ( value ) {
+					far = Number( value );
+				} );
+				gui.add( params, 'addFov', 0, 105 ).step( 0.1 ).onChange( function ( value ) {
+					addFov = Number( value );
+				} );
+
+				gui.add( params, 'maxSpeed', 1, 16 ).step( 1 ).onChange( function ( value ) {
+					maxSpeed = Number( value );
+				} );
+
+				gui.add( params, 'acc', 0, 10 ).step( 0.1 ).onChange( function ( value ) {
+					acc = Number( value );
+				} );
+
+
+				window.addEventListener( 'resize', onWindowResize, false );
+
+			}
+
+			function animate() {
+
+				requestAnimationFrame( animate );
+
+				const time = performance.now();
+
+
+				const delta = ( time - prevTime ) / 1000;
+				
+				velocity -= velocity * delta / velocityMult;
+				
+				if(speed < maxSpeed && moveForward){
+					speed += delta * acc 
+				}
+				camera.getWorldDirection(direction);
+
+				sphere.position.add( direction.multiplyScalar( ( speed * (Number(moveForward) - Number(moveBackward)) + velocity * Number(!isAccelerating)) * delta * gameSpeed ) );
+
+				
+				updateFood();
+
+				camera.fov = baseFov + (addFov * (Math.max(speed, velocity) - baseSpeed) / (maxSpeed - baseSpeed));
+
+				camera.far = far;
+				camera.updateProjectionMatrix();
+
+				frustum.setFromProjectionMatrix( camera.projectionMatrix );
+
+				
+
+				let visibleFood = [];
+
+				for(let i = 0;i<food.length;i+=4){
+					temp = food.slice(i, i + 4);
+					if(frustum.containsPoint(new THREE.Vector3(temp[0], temp[1], temp[2]))){
+						visibleFood.push(...temp);
+					}
+				}
+				
+				const mesh = new THREE.InstancedMesh( new THREE.IcosahedronGeometry( 7, 1 ), new THREE.MeshBasicMaterial(), visibleFood.length/4 );
+
+				for(let i = 0;i<visibleFood.length;i+=4){
+					
+					matrix.setPosition(visibleFood[i], visibleFood[i+1], visibleFood[i+2]);
+
+					mesh.setMatrixAt( i/4, matrix );
+					mesh.setColorAt( i/4, visibleFood[i+3] );
+				}
+
+				scene.add(mesh)
+
+
+				prevTime = time;
+
+				controls.update()
+
+				stats.update()
+				
+				composer.render();
+
+				// scene.remove(mesh);
+			}
+
+		</script>
+	</body>
+</html>
