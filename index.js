@@ -1,12 +1,12 @@
-var app = require('express')();
-var http = require('http').Server(app);
-var io = require('socket.io')(http);
+var express = require("express");
+var path = require("path");
+var app = express();
+var http = require("http").Server(app);
+var io = require("socket.io")(http);
 var now;
 var data = {
-    players: {
-
-    },
-    food: []
+    players: {},
+    food: [],
 };
 var lastResp = {};
 var maxPlayers = 100;
@@ -18,28 +18,29 @@ var idsBusy = [];
 var startMass = 50;
 var foodCount = 1600;
 
-app.get('/', function (req, res) {
-    res.sendFile(__dirname + '/views/pages/index.html');
+app.use(express.static(__dirname));
+
+app.get("/", (req, res) => {
+    res.sendFile(`${__dirname}/views/pages/index.html`);
 });
 
-io.on('connection', function (socket) {
+io.on("connection", function (socket) {
     if (idsFree.length) {
         var id = idsFree.pop();
-        socket.emit('id', id);
+        socket.emit("id", id);
         idsBusy.push(id);
-        socket.on('disconnect', function () {
+        socket.on("disconnect", function () {
             idsBusy.splice(idsBusy.indexOf(id), 1);
             idsFree.push(id);
             delete data.players[id];
         });
-        socket.on('msg', function (msg) {
-            io.emit('msg', msg);
+        socket.on("msg", function (msg) {
+            io.emit("msg", msg);
         });
-        socket.on('delete', function (msg) {
+        socket.on("delete", function (msg) {
             delete data.players[msg];
         });
-        socket.on('update', function (message) {
-            
+        socket.on("update", function (message) {
             data.players[message.id] = message;
             lastResp[message.id] = Date.now();
             data.food = data.food.filter(function (item) {
@@ -53,29 +54,24 @@ io.on('connection', function (socket) {
                 return !bool;
             });
             Object.keys(data.players).forEach(function (key) {
-                if(message.playersEaten.includes(key)){
+                if (message.playersEaten.includes(key)) {
                     data.players[key].alive = false;
                 }
-
             });
             //data.players[message.id]['mass']+=message.foodEaten.length;
         });
     }
-
 });
 
 function update(data) {
-
-    io.emit('update', data);
+    io.emit("update", data);
 }
-
-
 
 var temp = [];
 
 function getRandomColor() {
-    var letters = '0123456789ABCDEF';
-    var color = '#';
+    var letters = "0123456789ABCDEF";
+    var color = "#";
     for (var i = 0; i < 6; i++) {
         color += letters[Math.floor(Math.random() * 16)];
     }
@@ -88,15 +84,14 @@ function spawnFood() {
             temp.push({
                 x: Number((Math.random() * 7500).toFixed(0)),
                 y: Number((Math.random() * 4500).toFixed(0)),
-                color: getRandomColor()
+                color: getRandomColor(),
             });
         }
-        data['food'] = data['food'].concat(temp)
+        data["food"] = data["food"].concat(temp);
         temp = [];
     }
-
 }
 setInterval(update, 1000 / 5, data);
 setInterval(spawnFood, 1000 / 5);
 
-http.listen(process.env.PORT || 5000)
+http.listen(process.env.PORT || 5000);
