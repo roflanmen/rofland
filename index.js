@@ -20,6 +20,10 @@ var foodCount = 1600;
 
 app.use(express.static(__dirname));
 
+app.get("/", (req, res) => {
+    res.sendFile(`${__dirname}/views/pages/`);
+});
+
 app.get("/3d/a", (req, res) => {
     res.sendFile(`${__dirname}/3d/index_rofl.html`);
 });
